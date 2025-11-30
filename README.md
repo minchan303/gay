@@ -1,1 +1,0 @@
-AI Study Assistant - Full (Package A)\nSee README in project root.
