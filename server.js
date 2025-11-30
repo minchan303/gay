@@ -1,44 +1,60 @@
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
-import fs from "fs";
-import { OpenAI } from "openai";
+import { fileURLToPath } from "url";
+import OpenAI from "openai";
 
-dotenv.config();
 const app = express();
-
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static("public"));
+app.use(express.json());
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ==== FIX CHUẨN ĐƯỜNG DẪN CHO RENDER ====
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-app.post("/api/process", async (req, res) => {
-  try {
-    const { type, content, mode } = req.body;
+// ==== SET STATIC FOLDER ====
+app.use(express.static(path.join(__dirname, "public")));
 
-    const prompt = `
-      You are an AI Study Assistant. Mode = ${mode}.
-      Process the following input and return clean, structured text:
-
-      INPUT:
-      ${content}
-    `;
-
-    const response = await openai.responses.create({
-      model: "gpt-4.1-mini",
-      input: prompt,
-    });
-
-    const result = response.output[0].content[0].text;
-    res.json({ output: result });
-  } catch (error) {
-    console.error("ERROR:", error);
-    res.status(500).json({ error: "Server error" });
-  }
+// ==== OPENAI CLIENT ====
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
 });
 
+// ==== API CHÍNH ====
+app.post("/api/process", async (req, res) => {
+    try {
+        const { text, task } = req.body;
+
+        if (!text || !task) {
+            return res.status(400).json({ error: "Missing text or task" });
+        }
+
+        if (!process.env.OPENAI_API_KEY) {
+            return res.json({
+                output: "Lỗi: OPENAI_API_KEY chưa được cấu hình trên Render environment."
+            });
+        }
+
+        const prompt = `You are an AI assistant. Perform task "${task}" on the following input:\n\n${text}`;
+
+        const completion = await openai.chat.completions.create({
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }]
+        });
+
+        res.json({ output: completion.choices[0].message.content });
+
+    } catch (err) {
+        console.error("API error:", err);
+        res.status(500).json({ error: "Server error", detail: err.message });
+    }
+});
+
+// ==== CHẠY SERVER ====
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => {
+    console.log("=======================================");
+    console.log("AI STUDY SERVER IS RUNNING");
+    console.log("PORT:", PORT);
+    console.log("=======================================");
+});
