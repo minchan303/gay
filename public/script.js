@@ -86,13 +86,11 @@
       const j = await resp.json();
 
       if (task === "mindmap") {
-        // server returns { mindmap, raw }
         const tree = j.mindmap || { name: "Root", children: [] };
         outputArea.innerText = j.raw || JSON.stringify(tree, null, 2);
         renderMindmap(tree);
         mindmapWrap.style.display = "block";
       } else if (task === "flashcards" || task === "qa") {
-        // server returns parsed JSON -> show pretty JSON and text
         outputArea.innerText = JSON.stringify(j.data || j.raw || [], null, 2);
       } else {
         outputArea.innerText = j.output || j.raw || "No output returned";
@@ -106,60 +104,104 @@
     }
   });
 
-  // D3 rendering for mindmap (tree layout left->right)
+  // ----------------- Mindmap rendering (improved visuals) -----------------
+  // Render tree left->right with nicer nodes, wrapped labels, curved links, zoom/pan
   function renderMindmap(treeData) {
-    mindmapContainer.innerHTML = ""; // clear
-    const width = Math.max(800, mindmapContainer.clientWidth || 900);
-    const height = 560;
+    mindmapContainer.innerHTML = "";
+    const width = Math.max(900, mindmapContainer.clientWidth || 900);
+    const height = Math.max(520, treeData.children ? 120 + (countNodes(treeData) * 8) : 520);
 
-    const svg = d3.create("svg")
-      .attr("width", width)
-      .attr("height", height);
+    const svg = d3.create("svg").attr("width", width).attr("height", height).style("background", "#fff");
+    const g = svg.append("g").attr("transform", "translate(40,20)");
 
-    const g = svg.append("g").attr("transform", "translate(20,20)");
     const root = d3.hierarchy(treeData);
-    const treeLayout = d3.tree().size([height - 40, width - 200]);
+    const treeLayout = d3.tree().nodeSize([80, 180]); // row spacing, col spacing
     treeLayout(root);
 
-    // links
-    g.selectAll(".link")
+    // adjust extents -> center vertically
+    const minX = d3.min(root.descendants(), d => d.x);
+    const maxX = d3.max(root.descendants(), d => d.x);
+    const heightNeeded = maxX - minX + 120;
+    const yOffset = Math.max(0, (height - heightNeeded) / 2 - minX);
+    // links (curved)
+    const linkGroup = g.append("g").attr("class", "links");
+    linkGroup.selectAll("path")
       .data(root.links())
       .join("path")
-      .attr("class", "link")
       .attr("d", d => {
-        return `M${d.source.y},${d.source.x}C${(d.source.y + d.target.y)/2},${d.source.x} ${(d.source.y + d.target.y)/2},${d.target.x} ${d.target.y},${d.target.x}`;
+        const sx = d.source.y;
+        const sy = d.source.x + yOffset;
+        const tx = d.target.y;
+        const ty = d.target.x + yOffset;
+        const mx = (sx + tx) / 2;
+        return `M${sx},${sy} C ${mx},${sy} ${mx},${ty} ${tx},${ty}`;
       })
-      .attr("fill", "none")
-      .attr("stroke", "#cbd5e1")
-      .attr("stroke-width", 2);
+      .attr("stroke", "#cfe6ff")
+      .attr("stroke-width", 2.4)
+      .attr("fill", "none");
 
     // nodes
-    const node = g.selectAll(".node")
+    const nodeGroup = g.append("g").attr("class", "nodes");
+    const nodes = nodeGroup.selectAll("g.node")
       .data(root.descendants())
       .join("g")
       .attr("class", "node")
-      .attr("transform", d => `translate(${d.y},${d.x})`);
+      .attr("transform", d => `translate(${d.y},${d.x + yOffset})`);
 
-    node.append("circle")
-      .attr("r", 22)
-      .attr("fill", "#fff")
-      .attr("stroke", "#2563eb")
-      .attr("stroke-width", 2);
+    // drop shadow
+    const defs = svg.append("defs");
+    const filter = defs.append("filter").attr("id", "dropshadow").attr("height","130%");
+    filter.append("feGaussianBlur").attr("in","SourceAlpha").attr("stdDeviation","3").attr("result","blur");
+    filter.append("feOffset").attr("in","blur").attr("dx","0").attr("dy","2").attr("result","offsetBlur");
+    const feMerge = filter.append("feMerge");
+    feMerge.append("feMergeNode").attr("in","offsetBlur");
+    feMerge.append("feMergeNode").attr("in","SourceGraphic");
 
-    node.append("text")
-      .attr("dy", "0.35em")
-      .attr("text-anchor", "middle")
-      .text(d => d.data.name)
-      .style("font-size", "12px")
-      .style("pointer-events", "none");
+    nodes.append("circle")
+      .attr("r", d => Math.max(26, Math.min(36, 120 / Math.max(6, d.data.name.length))))
+      .attr("fill", "#ffffff")
+      .attr("stroke", "#2b6cb0")
+      .attr("stroke-width", 2)
+      .attr("filter", "url(#dropshadow)");
+
+    // text: use foreignObject for wrapping (more flexible)
+    nodes.append("foreignObject")
+      .attr("x", -80)
+      .attr("y", d => -24)
+      .attr("width", 160)
+      .attr("height", 48)
+      .append("xhtml:div")
+      .style("font", "13px 'Inter', sans-serif")
+      .style("text-align", "center")
+      .style("color", "#0b1a2b")
+      .style("pointer-events", "none")
+      .html(d => escapeHtml(d.data.name));
 
     mindmapContainer.appendChild(svg.node());
 
-    // simple pan & zoom
-    const zoom = d3.zoom().scaleExtent([0.5, 2]).on("zoom", (event) => {
-      svg.select("g").attr("transform", event.transform);
+    // zoom/pan
+    const zoom = d3.zoom().scaleExtent([0.4, 2]).on("zoom", (event) => {
+      g.attr("transform", event.transform);
     });
     d3.select(svg.node()).call(zoom);
+
+    // center & initial scale
+    const initialScale = Math.min(1.1, Math.max(0.6, Math.min((mindmapContainer.clientWidth - 100) / (root.height * 180 + 300), 1.1)));
+    const initialX = 20;
+    const initialY = (mindmapContainer.clientHeight / 2) - (root.x || 0);
+    d3.select(svg.node()).call(zoom.transform, d3.zoomIdentity.translate(initialX, initialY).scale(initialScale));
+  }
+
+  function countNodes(node) {
+    if (!node) return 0;
+    let c = 1;
+    if (node.children) for (const ch of node.children) c += countNodes(ch);
+    return c;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   }
 
   // export mindmap as PNG
@@ -169,14 +211,15 @@
     const serializer = new XMLSerializer();
     const svgStr = serializer.serializeToString(svg);
     const canvas = document.createElement("canvas");
-    canvas.width = svg.clientWidth;
-    canvas.height = svg.clientHeight;
+    const rect = svg.getBoundingClientRect();
+    canvas.width = rect.width * 2; // higher DPI
+    canvas.height = rect.height * 2;
     const ctx = canvas.getContext("2d");
     const img = new Image();
     img.onload = () => {
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = "#ffffff";
       ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const a = document.createElement("a");
       a.download = "mindmap.png";
       a.href = canvas.toDataURL("image/png");
