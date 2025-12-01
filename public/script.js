@@ -1,141 +1,51 @@
-// ------- MODE SELECTION -------
-const modeRadios = document.getElementsByName("mode");
+(function () {
+
 const textInput = document.getElementById("textInput");
-const fileInput = document.getElementById("fileInput");
 const urlInput = document.getElementById("urlInput");
+const fileInput = document.getElementById("fileInput");
+const outputArea = document.getElementById("outputArea");
+const loading = document.getElementById("loading");
+const taskSelect = document.getElementById("taskSelect");
 
-modeRadios.forEach(r => {
-    r.addEventListener("change", () => {
-        textInput.classList.add("hidden");
-        fileInput.classList.add("hidden");
-        urlInput.classList.add("hidden");
-
-        if (r.value === "paste") textInput.classList.remove("hidden");
-        if (r.value === "upload") fileInput.classList.remove("hidden");
-        if (r.value === "url") urlInput.classList.remove("hidden");
-    });
+document.querySelectorAll('input[name="mode"]').forEach(r => {
+  r.addEventListener("change", () => {
+    let mode = document.querySelector('input[name="mode"]:checked').value;
+    document.getElementById("textBox").style.display = mode === "text" ? "block" : "none";
+    document.getElementById("fileBox").style.display = mode === "file" ? "block" : "none";
+    document.getElementById("urlBox").style.display = mode === "url" ? "block" : "none";
+  });
 });
 
-document.getElementById("clearBtn").onclick = () => {
-    textInput.value = "";
-    urlInput.value = "";
-    document.getElementById("output").innerHTML = "";
-    document.getElementById("mindmapContainer").innerHTML = "";
-};
+document.getElementById("clearBtn").addEventListener("click", () => {
+  textInput.value = "";
+  urlInput.value = "";
+  if (fileInput) fileInput.value = "";
+  outputArea.innerText = "";
+});
 
-// ========== CALL SERVER ==========
-async function callAPI(text, task) {
-    const res = await fetch("/api/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, task })
-    });
-    return res.json();
-}
+document.getElementById("generateBtn").addEventListener("click", async () => {
+  const mode = document.querySelector('input[name="mode"]:checked').value;
 
-// ========== MAIN BUTTON ==========
-document.getElementById("generateBtn").onclick = async () => {
+  const form = new FormData();
+  form.append("task", taskSelect.value);
 
-    let content = "";
+  if (mode === "text") form.append("text", textInput.value);
+  if (mode === "url") form.append("url", urlInput.value);
+  if (mode === "file") form.append("file", fileInput.files[0]);
 
-    if (modeRadios[0].checked) content = textInput.value;
-    if (modeRadios[1].checked) {
-        const file = fileInput.files[0];
-        content = await file.text();
-    }
-    if (modeRadios[2].checked) content = urlInput.value;
+  loading.style.display = "block";
+  outputArea.innerText = "";
 
-    if (!content.trim()) return alert("Chưa có dữ liệu!");
+  try {
+    const resp = await fetch("/api/process", { method: "POST", body: form });
+    const data = await resp.json();
+    outputArea.innerText = data.output || JSON.stringify(data, null, 2);
 
-    const task = document.getElementById("taskMenu").value;
+  } catch (e) {
+    outputArea.innerText = "Error: " + e.message;
+  }
 
-    const result = await callAPI(content, task);
+  loading.style.display = "none";
+});
 
-    if (task === "mindmap") {
-        document.getElementById("output").innerHTML = "";
-        renderMindmap(result);
-        document.getElementById("exportMindmapBtn").classList.remove("hidden");
-    } else {
-        document.getElementById("mindmapContainer").innerHTML = "";
-        document.getElementById("exportMindmapBtn").classList.add("hidden");
-        document.getElementById("output").innerHTML = `<pre>${result}</pre>`;
-    }
-};
-
-// ======================
-//    BEAUTIFUL MINDMAP
-// ======================
-function renderMindmap(data) {
-    const container = document.getElementById("mindmapContainer");
-    container.innerHTML = "";
-
-    const width = container.offsetWidth;
-    const height = 600;
-
-    const svg = d3.select("#mindmapContainer")
-        .append("svg")
-        .attr("width", width)
-        .attr("height", height);
-
-    const g = svg.append("g").attr("transform", "translate(40,40)");
-
-    const root = d3.hierarchy(data);
-    const treeLayout = d3.tree().size([height - 80, width - 200]);
-    treeLayout(root);
-
-    // Links
-    g.selectAll(".link")
-        .data(root.links())
-        .enter()
-        .append("path")
-        .attr("fill", "none")
-        .attr("stroke", "#cdd8ff")
-        .attr("stroke-width", 2)
-        .attr("d", d3.linkHorizontal()
-            .x(d => d.y)
-            .y(d => d.x)
-        );
-
-    // Nodes
-    const node = g.selectAll(".node")
-        .data(root.descendants())
-        .enter()
-        .append("g")
-        .attr("transform", d => `translate(${d.y},${d.x})`);
-
-    node.append("circle")
-        .attr("r", 26)
-        .attr("fill", "#eef3ff")
-        .attr("stroke", "#4c6aff")
-        .attr("stroke-width", 2);
-
-    node.append("text")
-        .attr("dy", 5)
-        .attr("text-anchor", "middle")
-        .style("font-size", "13px")
-        .style("font-weight", "500")
-        .text(d => d.data.name);
-}
-
-// EXPORT PNG
-document.getElementById("exportMindmapBtn").onclick = () => {
-    const svg = document.querySelector("#mindmapContainer svg");
-    const svgData = new XMLSerializer().serializeToString(svg);
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-
-    canvas.width = svg.width.baseVal.value;
-    canvas.height = svg.height.baseVal.value;
-
-    img.onload = () => {
-        ctx.drawImage(img, 0, 0);
-        const a = document.createElement("a");
-        a.download = "mindmap.png";
-        a.href = canvas.toDataURL("image/png");
-        a.click();
-    };
-
-    img.src = "data:image/svg+xml;base64," + btoa(svgData);
-};
+})();
