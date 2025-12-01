@@ -1,51 +1,138 @@
-(function () {
+document.querySelectorAll("input[name='mode']").forEach(radio => {
+    radio.addEventListener("change", () => {
+        document.getElementById("inputText").style.display = "none";
+        document.getElementById("fileInput").style.display = "none";
+        document.getElementById("urlInput").style.display = "none";
 
-const textInput = document.getElementById("textInput");
-const urlInput = document.getElementById("urlInput");
-const fileInput = document.getElementById("fileInput");
-const outputArea = document.getElementById("outputArea");
-const loading = document.getElementById("loading");
-const taskSelect = document.getElementById("taskSelect");
+        let mode = document.querySelector("input[name='mode']:checked").value;
 
-document.querySelectorAll('input[name="mode"]').forEach(r => {
-  r.addEventListener("change", () => {
-    let mode = document.querySelector('input[name="mode"]:checked').value;
-    document.getElementById("textBox").style.display = mode === "text" ? "block" : "none";
-    document.getElementById("fileBox").style.display = mode === "file" ? "block" : "none";
-    document.getElementById("urlBox").style.display = mode === "url" ? "block" : "none";
-  });
-});
-
-document.getElementById("clearBtn").addEventListener("click", () => {
-  textInput.value = "";
-  urlInput.value = "";
-  if (fileInput) fileInput.value = "";
-  outputArea.innerText = "";
+        if (mode === "text") document.getElementById("inputText").style.display = "block";
+        if (mode === "file") document.getElementById("fileInput").style.display = "block";
+        if (mode === "url") document.getElementById("urlInput").style.display = "block";
+    });
 });
 
 document.getElementById("generateBtn").addEventListener("click", async () => {
-  const mode = document.querySelector('input[name="mode"]:checked').value;
+    const outputType = document.getElementById("outputType").value;
+    const processing = document.getElementById("processing");
+    const outputBox = document.getElementById("outputBox");
+    const mindmapDiv = document.getElementById("mindmap-container");
+    const downloadBtn = document.getElementById("downloadBtn");
 
-  const form = new FormData();
-  form.append("task", taskSelect.value);
+    outputBox.innerHTML = "";
+    mindmapDiv.style.display = "none";
+    downloadBtn.style.display = "none";
+    processing.style.display = "block";
 
-  if (mode === "text") form.append("text", textInput.value);
-  if (mode === "url") form.append("url", urlInput.value);
-  if (mode === "file") form.append("file", fileInput.files[0]);
+    let payload = {};
+    let mode = document.querySelector("input[name='mode']:checked").value;
 
-  loading.style.display = "block";
-  outputArea.innerText = "";
+    if (mode === "text") payload.text = document.getElementById("inputText").value;
+    if (mode === "url") payload.url = document.getElementById("urlInput").value;
 
-  try {
-    const resp = await fetch("/api/process", { method: "POST", body: form });
-    const data = await resp.json();
-    outputArea.innerText = data.output || JSON.stringify(data, null, 2);
+    if (mode === "file") {
+        let file = document.getElementById("fileInput").files[0];
+        let form = new FormData();
+        form.append("file", file);
+        form.append("type", outputType);
 
-  } catch (e) {
-    outputArea.innerText = "Error: " + e.message;
-  }
+        let res = await fetch("/api/upload", { method: "POST", body: form });
+        let data = await res.json();
+        processing.style.display = "none";
+        return showResult(data, outputType);
+    }
 
-  loading.style.display = "none";
+    payload.type = outputType;
+
+    const res = await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    processing.style.display = "none";
+
+    showResult(data, outputType);
 });
 
-})();
+function showResult(data, type) {
+    const outputBox = document.getElementById("outputBox");
+    const mindmapDiv = document.getElementById("mindmap-container");
+    const downloadBtn = document.getElementById("downloadBtn");
+
+    if (type === "mindmap") {
+        mindmapDiv.style.display = "block";
+        renderMindmap(data.mindmap);
+        return;
+    }
+
+    outputBox.innerHTML = `<pre>${data.result}</pre>`;
+    downloadBtn.style.display = "inline-block";
+
+    downloadBtn.onclick = () => {
+        const blob = new Blob([data.result], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "output.txt";
+        a.click();
+    };
+}
+
+// -----------------------
+// 🎨 MINDMAP ĐẸP
+// -----------------------
+
+function renderMindmap(treeData) {
+    const container = document.getElementById("mindmap-container");
+    container.innerHTML = "";
+
+    const width = container.clientWidth;
+    const height = 600;
+
+    const svg = d3.select(container)
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const g = svg.append("g")
+        .attr("transform", "translate(60,50)");
+
+    const tree = d3.tree().size([height - 100, width - 200]);
+    const root = d3.hierarchy(treeData);
+    tree(root);
+
+    const links = root.links();
+    const nodes = root.descendants();
+
+    g.selectAll(".link")
+        .data(links)
+        .enter()
+        .append("path")
+        .attr("d", d3.linkHorizontal()
+            .x(d => d.y)
+            .y(d => d.x))
+        .attr("stroke", "#7da2ff")
+        .attr("stroke-width", 3)
+        .attr("opacity", .4)
+        .attr("fill", "none");
+
+    const node = g.selectAll(".node")
+        .data(nodes)
+        .enter()
+        .append("g")
+        .attr("transform", d => `translate(${d.y}, ${d.x})`);
+
+    node.append("circle")
+        .attr("r", 30)
+        .attr("fill", "white")
+        .attr("stroke", "#3b6cff")
+        .attr("stroke-width", 4);
+
+    node.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", 5)
+        .style("font-size", "16px")
+        .style("font-weight", "600")
+        .text(d => d.data.name);
+}
