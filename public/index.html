@@ -1,57 +1,64 @@
 <!doctype html>
 <html lang="vi">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>AI Study Assistant</title>
-<link rel="stylesheet" href="style.css" />
-<script src="https://d3js.org/d3.v7.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Study Assistant</title>
+
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="page">
-    <div class="card">
-      <h1 class="title">AI Study Assistant</h1>
 
-      <div class="controls">
-        <div class="modes">
-          <label><input type="radio" name="inputMode" value="text" checked> Paste text</label>
-          <label><input type="radio" name="inputMode" value="file"> Upload file</label>
-          <label><input type="radio" name="inputMode" value="url"> URL</label>
-        </div>
+  <header class="header">
+    <h1>AI Study Assistant</h1>
+    <p>Tóm tắt • Mindmap • Flashcards • Bullet Notes • Q&A</p>
+  </header>
 
-        <textarea id="textInput" placeholder="Dán văn bản ở đây..." class="textArea"></textarea>
-        <input id="fileInput" type="file" class="hidden" />
-        <input id="urlInput" type="text" placeholder="Dán URL (http...)" class="hidden textInput" />
+  <main class="container">
 
-        <div class="row">
-          <select id="taskSelect" class="select">
-            <option value="summary">Tóm tắt</option>
-            <option value="mindmap">Mindmap (ảnh)</option>
-            <option value="flashcards">Flashcards</option>
-            <option value="qa">Q&A</option>
-          </select>
+    <section class="input-card glass">
+      <h2>Nhập dữ liệu</h2>
 
-          <button id="generateBtn" class="btn primary">Generate</button>
-          <button id="clearBtn" class="btn">Clear</button>
-        </div>
-
-        <div id="loading" class="loading hidden">⏳ Processing...</div>
+      <div class="mode-select">
+        <label><input type="radio" name="mode" value="text" checked> Text</label>
+        <label><input type="radio" name="mode" value="file"> File</label>
+        <label><input type="radio" name="mode" value="url"> URL</label>
       </div>
-    </div>
 
-    <div class="card" id="outputCard">
+      <div id="textBox">
+        <textarea id="textInput" placeholder="Dán văn bản vào đây..."></textarea>
+      </div>
+
+      <div id="fileBox" style="display:none">
+        <input id="fileInput" type="file" />
+      </div>
+
+      <div id="urlBox" style="display:none">
+        <input id="urlInput" type="text" placeholder="https://..." />
+      </div>
+
+      <div class="row">
+        <select id="taskSelect">
+          <option value="summary">Tóm tắt</option>
+          <option value="mindmap">Mindmap</option>
+          <option value="bullet">Bullet points</option>
+          <option value="flashcards">Flashcards</option>
+          <option value="qa">Q&A</option>
+        </select>
+
+        <button id="generateBtn" class="btn primary">Generate</button>
+        <button id="clearBtn" class="btn">Clear</button>
+      </div>
+
+      <p id="loading" class="loading" style="display:none;">⏳ Đang xử lý...</p>
+    </section>
+
+    <section class="output-card glass">
       <h2>Kết quả</h2>
-      <div id="output" class="outputBox"></div>
+      <pre id="outputArea"></pre>
+    </section>
 
-      <div id="mindmapContainer" class="mindmap hidden"></div>
-
-      <div class="actions">
-        <button id="copyBtn" class="btn">Copy</button>
-        <button id="downloadBtn" class="btn">Download txt</button>
-        <button id="exportMindmapBtn" class="btn hidden">Export Mindmap PNG</button>
-      </div>
-    </div>
-  </div>
+  </main>
 
 <script src="script.js"></script>
 </body>
