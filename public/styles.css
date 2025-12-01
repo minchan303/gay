@@ -14,7 +14,7 @@ body{
 }
 h2{margin:0 0 12px 0;font-weight:600}
 .modes{display:flex;gap:12px;color:var(--muted);margin-bottom:12px}
-textarea.textbox, textarea#textInput, input[type="text"]{
+textarea#textInput, input[type="text"]{
   width:100%;padding:12px;border-radius:10px;border:1px solid #d1d5db;background:#fafafa;font-size:15px;margin-top:8px;
 }
 .row{display:flex;gap:12px;align-items:center;margin-top:12px}
@@ -24,7 +24,7 @@ select#taskSelect{padding:10px;border-radius:8px;border:1px solid #d6dee8;backgr
 .btn.small{padding:6px 10px;font-size:13px}
 .loading{margin-top:10px;color:var(--blue);font-weight:700}
 .output-box{background:#f8fafc;border:1px solid #e5e7eb;padding:14px;border-radius:10px;min-height:160px;margin-top:12px;white-space:pre-wrap}
-.mindmap-box{margin-top:14px;background:#fff;border:1px solid #e6eef6;border-radius:10px;padding:8px;min-height:360px;overflow:auto}
+.mindmap-box{margin-top:14px;background:#fff;border:1px solid #e6eef6;border-radius:10px;padding:8px;min-height:420px;overflow:auto}
 .tools{display:flex;gap:8px;margin-top:8px}
 @media(max-width:900px){
   .container{width:94%;margin:18px auto;padding:18px}
