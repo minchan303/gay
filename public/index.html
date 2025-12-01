@@ -1,53 +1,65 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8" />
-    <title>AI Study Assistant</title>
-    <link rel="stylesheet" href="style.css" />
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Study Assistant</title>
+
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-    <div class="container">
-        <h1 class="title">AI Study Assistant</h1>
 
-        <div class="card">
-            <h2>Input</h2>
+  <header class="header">
+    <h1>AI Study Assistant</h1>
+    <p>Tóm tắt • Mindmap • Flashcards • Bullet Notes • Q&A</p>
+  </header>
 
-            <div class="input-modes">
-                <label><input type="radio" name="mode" value="paste" checked> Paste text</label>
-                <label><input type="radio" name="mode" value="upload"> Upload file</label>
-                <label><input type="radio" name="mode" value="url"> URL</label>
-            </div>
+  <main class="container">
 
-            <textarea id="textInput" class="text-input" placeholder="Nhập văn bản..."></textarea>
+    <section class="input-card glass">
+      <h2>Nhập dữ liệu</h2>
 
-            <input type="file" id="fileInput" class="hidden" />
-            <input type="text" id="urlInput" class="hidden text-input" placeholder="Dán URL tại đây" />
+      <div class="mode-select">
+        <label><input type="radio" name="mode" value="text" checked> Text</label>
+        <label><input type="radio" name="mode" value="file"> File</label>
+        <label><input type="radio" name="mode" value="url"> URL</label>
+      </div>
 
-            <select id="taskMenu" class="select">
-                <option value="summary">Tóm tắt</option>
-                <option value="mindmap">Mindmap</option>
-                <option value="flashcards">Flashcards</option>
-                <option value="qa">Q&A</option>
-            </select>
+      <div id="textBox">
+        <textarea id="textInput" placeholder="Dán văn bản vào đây..."></textarea>
+      </div>
 
-            <button id="generateBtn" class="btn">Generate</button>
-            <button id="clearBtn" class="btn btn-secondary">Clear</button>
-        </div>
+      <div id="fileBox" style="display:none">
+        <input id="fileInput" type="file" />
+      </div>
 
-        <div id="outputCard" class="card">
-            <h2>Kết quả</h2>
-            <div id="output"></div>
+      <div id="urlBox" style="display:none">
+        <input id="urlInput" type="text" placeholder="https://..." />
+      </div>
 
-            <div id="mindmapContainer"></div>
+      <div class="row">
+        <select id="taskSelect">
+          <option value="summary">Tóm tắt</option>
+          <option value="mindmap">Mindmap</option>
+          <option value="bullet">Bullet points</option>
+          <option value="flashcards">Flashcards</option>
+          <option value="qa">Q&A</option>
+        </select>
 
-            <button id="copyBtn" class="btn small">Copy</button>
-            <button id="downloadBtn" class="btn small">Download</button>
-            <button id="exportMindmapBtn" class="btn small hidden">Export mindmap PNG</button>
-        </div>
-    </div>
+        <button id="generateBtn" class="btn primary">Generate</button>
+        <button id="clearBtn" class="btn">Clear</button>
+      </div>
 
-    <script src="script.js"></script>
+      <p id="loading" class="loading" style="display:none;">⏳ Đang xử lý...</p>
+    </section>
+
+    <section class="output-card glass">
+      <h2>Kết quả</h2>
+      <pre id="outputArea"></pre>
+    </section>
+
+  </main>
+
+<script src="script.js"></script>
 </body>
 </html>
