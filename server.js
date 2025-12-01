@@ -1,224 +1,136 @@
-// server.js
 import express from "express";
-import cors from "cors";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
-import dotenv from "dotenv";
-import pdfParse from "pdf-parse";
-import mammoth from "mammoth";
+import cors from "cors";
 import fetch from "node-fetch";
-import { JSDOM } from "jsdom";
-import OpenAI from "openai";
-
-dotenv.config();
+import pdfParse from "pdf-parse";
 
 const app = express();
-const upload = multer({ dest: "uploads/" });
-
 app.use(cors());
-app.use(express.json({ limit: "30mb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
-const __dirname = path.resolve();
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static("public"));
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-const openai = new OpenAI({ apiKey: OPENAI_KEY });
+const upload = multer();
 
-// helpers
-async function extractFileText(filePath, originalName = "") {
-  const ext = (originalName.split(".").pop() || "").toLowerCase();
-  try {
-    if (ext === "pdf") {
-      const data = fs.readFileSync(filePath);
-      const parsed = await pdfParse(data);
-      return parsed.text || "";
-    }
-    if (ext === "docx") {
-      const buffer = fs.readFileSync(filePath);
-      const res = await mammoth.extractRawText({ buffer });
-      return res.value || "";
-    }
-    if (ext === "txt") {
-      return fs.readFileSync(filePath, "utf8");
-    }
-    // images: no OCR included (could add Tesseract later)
-    return "";
-  } catch (e) {
-    return "";
+// ======== CONFIG ==========
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const MODEL = "gpt-4o-mini"; // model rẻ nhất
+
+// ======== HELPERS ========
+function chunkText(text, size = 1800) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
   }
+  return chunks;
 }
 
-async function fetchUrlText(url) {
-  try {
-    const resp = await fetch(url, { timeout: 15000 });
-    const html = await resp.text();
-    const dom = new JSDOM(html);
-    const doc = dom.window.document;
-    const selectors = ["article", "main", "[role=main]", "#content", ".article", ".entry-content", ".post"];
-    for (const s of selectors) {
-      const el = doc.querySelector(s);
-      if (el && el.textContent && el.textContent.trim().length > 200) return el.textContent.trim();
-    }
-    return doc.body ? doc.body.textContent.trim() : "";
-  } catch (e) {
-    return "";
-  }
+async function callOpenAI(prompt) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 1200
+    })
+  });
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
-function buildPromptForTask(task, content) {
-  if (task === "mindmap") {
-    return `
-Convert the following content into a hierarchical JSON mindmap.
+// ============ MAIN API =============
+app.post("/process", upload.single("file"), async (req, res) => {
+  try {
+    const mode = req.body.mode;
+    let inputText = "";
 
-REQUIREMENTS:
-- Output valid JSON only (no explanation).
-- Use this structure:
+    // === Input: Raw text ===
+    if (req.body.inputType === "text") {
+      inputText = req.body.text || "";
+    }
+
+    // === Input: PDF Upload ===
+    if (req.body.inputType === "file" && req.file) {
+      const pdfData = await pdfParse(req.file.buffer);
+      inputText = pdfData.text;
+    }
+
+    // === Input: URL ===
+    if (req.body.inputType === "url") {
+      const html = await fetch(req.body.url).then(r => r.text());
+      inputText = html.replace(/<[^>]*>?/gm, " ");
+    }
+
+    if (!inputText.trim()) {
+      return res.json({ error: "Empty text" });
+    }
+
+    // CHUNKING — reduce token consumption
+    const chunks = chunkText(inputText);
+    const miniSummaries = [];
+
+    for (let chunk of chunks) {
+      const small = await callOpenAI(
+        `Tóm tắt ngắn nhất có thể đoạn sau:\n\n${chunk}\n\n---\nChỉ trả về nội dung tóm tắt.`
+      );
+      miniSummaries.push(small);
+    }
+
+    const merged = miniSummaries.join("\n");
+
+    let finalResult = "";
+
+    // ===== MODES =====
+    if (mode === "summary") {
+      finalResult = await callOpenAI(
+        `Tóm tắt toàn bộ nội dung sau một cách rõ ràng:\n\n${merged}`
+      );
+    }
+
+    if (mode === "mindmap") {
+      finalResult = await callOpenAI(
+        `Hãy chuyển nội dung sau thành JSON Mindmap dạng cây:
+
 {
-  "name": "Root",
-  "children": [
-    { "name": "Main idea", "children": [...] }
-  ]
-}
-- Use short labels (max 6-8 words per node).
-- Ensure the JSON parses (no trailing commas).
-CONTENT:
-${content}
-`;
-  }
-
-  if (task === "flashcards") {
-    return `
-Create up to 12 flashcards from the content. Output JSON array ONLY, format:
-[
-  { "q": "Question text", "a": "Answer text" },
-  ...
-]
-Content:
-${content}
-`;
-  }
-
-  if (task === "qa") {
-    return `
-Create 8 short Q&A pairs for study. Output JSON array ONLY:
-[
-  { "q":"...", "a":"..."}
-]
-Content:
-${content}
-`;
-  }
-
-  if (task === "bullet") {
-    return `
-Convert the content into clear bullet points (short lines). Return plain text (bulleted lines).
-Content:
-${content}
-`;
-  }
-
-  // default summary
-  return `
-Summarize the content into concise study notes with headings and bullet points. Return plain text only.
-Content:
-${content}
-`;
+ "root": "Chủ đề",
+ "children": [
+   { "text": "", "children": [] }
+ ]
 }
 
-// main API
-app.post("/api/process", upload.single("file"), async (req, res) => {
-  try {
-    let text = "";
-
-    // 1) file uploaded
-    if (req.file) {
-      text = await extractFileText(req.file.path, req.file.originalname);
-      // cleanup
-      fs.unlink(req.file.path, () => {});
+Nội dung:\n\n${merged}`
+      );
     }
 
-    // 2) url
-    if (!text && req.body.url) {
-      text = await fetchUrlText(req.body.url);
+    if (mode === "flashcards") {
+      finalResult = await callOpenAI(
+        `Tạo flashcards dạng Q&A từ nội dung sau:
+
+Format:
+Q: ...
+A: ...
+
+Nội dung:\n\n${merged}`
+      );
     }
 
-    // 3) direct text
-    if (!text && req.body.text) text = req.body.text;
-
-    if (!text) return res.status(400).json({ error: "No input found. Upload file, provide URL or paste text." });
-    if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY not set on server." });
-
-    const task = req.body.task || "summary";
-    const prompt = buildPromptForTask(task, text);
-
-    // call OpenAI Responses API
-    const response = await openai.responses.create({
-      model: OPENAI_MODEL,
-      input: prompt,
-    });
-
-    // get textual output
-    let outputText = "";
-    if (response.output_text) outputText = response.output_text;
-    else if (response.output && Array.isArray(response.output)) {
-      for (const o of response.output) {
-        if (o.type === "message" && o.content) {
-          for (const c of o.content) {
-            if (c.type === "output_text" && c.text) outputText += c.text;
-          }
-        }
-      }
-    } else {
-      outputText = JSON.stringify(response, null, 2);
+    if (mode === "qa") {
+      finalResult = await callOpenAI(
+        `Trích xuất các câu hỏi quan trọng + câu trả lời từ nội dung sau:\n\n${merged}`
+      );
     }
 
-    // If task produces JSON outputs (mindmap/flashcards/qa), try to parse it.
-    if (["mindmap", "flashcards", "qa"].includes(task)) {
-      // remove triple backticks if any
-      let cleaned = outputText.replace(/```json/g, "").replace(/```/g, "").trim();
-      // Try parse, if fail, attempt to extract first JSON substring
-      let parsed = null;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (e) {
-        // try to find first { ... } or [ ... ]
-        const firstObj = cleaned.match(/(\{[\s\S]*\})/m);
-        const firstArr = cleaned.match(/(\[[\s\S]*\])/m);
-        const candidate = firstObj ? firstObj[0] : (firstArr ? firstArr[0] : null);
-        if (candidate) {
-          try { parsed = JSON.parse(candidate); } catch (e2) { parsed = null; }
-        }
-      }
-      // If parse failed for mindmap, wrap plain text as single child (fallback)
-      if (task === "mindmap") {
-        if (!parsed) {
-          parsed = { name: "Root", children: [{ name: outputText.substring(0, 300) }] };
-        }
-        return res.json({ ok: true, raw: outputText, mindmap: parsed });
-      } else {
-        // flashcards or qa
-        if (!parsed) {
-          return res.json({ ok: true, raw: outputText, data: null, note: "Could not parse JSON from model." });
-        }
-        return res.json({ ok: true, raw: outputText, data: parsed });
-      }
-    }
-
-    // default: summary or bullet -> return text
-    return res.json({ ok: true, output: outputText });
+    res.json({ result: finalResult });
 
   } catch (err) {
-    console.error("Server error:", err);
-    res.status(500).json({ error: err.message || "Processing failed" });
+    res.json({ error: err.message });
   }
 });
 
-// fallback serve index.html
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
+// ============ START SERVER ============
+app.listen(3000, () => console.log("Server running on port 3000"));
