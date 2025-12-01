@@ -127,9 +127,11 @@ Nội dung:\n\n${merged}`
 
     res.json({ result: finalResult });
 
-  } catch (err) {
-    res.json({ error: err.message });
-  }
+ } catch (err) {
+  console.error("PDF / Processing Error:", err);
+  res.json({ error: "Server error: " + err.message });
+}
+
 });
 
 // ============ START SERVER ============
